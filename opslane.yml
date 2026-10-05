@@ -1,0 +1,40 @@
+dockerfile: Dockerfile.standalone-infisical
+build_target: production
+port: 8080
+health_path: /api/status
+services:
+  - type: postgres
+    version: postgres:14-alpine
+  - redis
+env:
+  DB_CONNECTION_URI: postgres://app:app@pg:5432/app
+  REDIS_URL: redis://redis:6379
+  SITE_URL: http://localhost:8080
+  ENCRYPTION_KEY: a764e68a9283072ad92607f070896673
+  AUTH_SECRET: pQ83rcoo/BDdRBQu8rwR0dZ4JAdb3WI3V30GEYnz8bg=
+  TELEMETRY_ENABLED: "false"
+seed: cd /backend && node /opslane/seed.cjs
+verify_setup:
+  instructions: |
+    Seeded login: admin@verify.opslane.com / OpslaneVerify123! (email verified). Admin of the
+    organization "Opslane Org"; not a server (instance) admin. Sign in at /login.
+    Seeded data: project "Opslane Project" (Secrets Management, environments dev / staging / prod)
+    with secrets DATABASE_URL, API_KEY and FEATURE_FLAG_NEW_UI in dev at path /.
+    After sign-in you land on /organizations/<orgId>/projects, the org overview with one card per
+    product (Secrets Management shows 1 project, 3 secrets). An "SMTP has not been configured" banner
+    is expected; email invites and verification don't send.
+    Main pages (ids are generated per run; read them from the URL after sign-in):
+      /organizations/<orgId>/projects/secret-management                      Secrets Management project list
+      /organizations/<orgId>/projects/secret-management/<projectId>/overview  project secrets (values masked; Reveal All)
+      .../<projectId>/approval, /integrations, /insights, /access-management, /audit-logs   project tabs
+      /organizations/<orgId>/access-management                                org users, identities, groups, roles
+      /organizations/<orgId>/integrations, /billing, /audit-logs, /settings   org pages
+      /organizations/<orgId>/projects/kms, /projects/secret-scanning           other products (empty)
+    The instance admin is a separate account, instance-admin@verify.opslane.com / OpslaneVerify123!,
+    for the server admin console (/admin); don't use it unless a change is about server administration.
+  landing:
+    path: /
+    expect: /organizations/*/projects
+    text: Opslane Org
+auth:
+  session_command: node /opslane/session.cjs
