@@ -1,0 +1,28 @@
+dockerfile: Dockerfile.standalone-infisical
+build_target: production
+port: 8080
+health_path: /api/status
+services:
+  - postgres
+  - redis
+env:
+  DB_CONNECTION_URI: postgres://app:app@pg:5432/app
+  REDIS_URL: redis://redis:6379
+  ENCRYPTION_KEY: b85c0520003b9d5b306d7c6d4edde92f
+  AUTH_SECRET: 99Qs43NALtnsWu+h2Nh6N3F844ODuQF08sLHwFemZO4=
+  SITE_URL: http://localhost:8080
+  TELEMETRY_ENABLED: "false"
+  OTEL_TELEMETRY_COLLECTION_ENABLED: "false"
+seed: sh /opslane/seed.sh
+verify_setup:
+  instructions: |
+    Seeded login: admin@opslane.local / OpslaneVerify123! (instance super admin, email login).
+    The account is the admin of organization "Opslane Org", created through the instance
+    bootstrap API. No projects or secrets are seeded. Sign in at /login; after sign-in you land
+    on the organization overview, which has no projects yet.
+notes: |
+  The app runs database migrations itself on boot, so there is no separate migrate step.
+  .opslane/seed.sh starts the server inside the seed container (which also migrates the empty
+  database), waits for /api/status, calls POST /api/v1/admin/bootstrap to create the admin user
+  and organization, then stops the server. Dockerfile.standalone-infisical is unchanged.
+  The keys in env are throwaway values for the ephemeral check environment.
