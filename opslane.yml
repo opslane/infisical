@@ -3,26 +3,38 @@ build_target: production
 port: 8080
 health_path: /api/status
 services:
-  - postgres
+  - type: postgres
+    version: postgres:14-alpine
   - redis
 env:
   DB_CONNECTION_URI: postgres://app:app@pg:5432/app
   REDIS_URL: redis://redis:6379
-  ENCRYPTION_KEY: b85c0520003b9d5b306d7c6d4edde92f
-  AUTH_SECRET: 99Qs43NALtnsWu+h2Nh6N3F844ODuQF08sLHwFemZO4=
   SITE_URL: http://localhost:8080
+  ENCRYPTION_KEY: a764e68a9283072ad92607f070896673
+  AUTH_SECRET: pQ83rcoo/BDdRBQu8rwR0dZ4JAdb3WI3V30GEYnz8bg=
   TELEMETRY_ENABLED: "false"
-  OTEL_TELEMETRY_COLLECTION_ENABLED: "false"
-seed: sh /opslane/seed.sh
+seed: cd /backend && node /opslane/seed.cjs
 verify_setup:
   instructions: |
-    Seeded login: admin@opslane.local / OpslaneVerify123! (instance super admin, email login).
-    The account is the admin of organization "Opslane Org", created through the instance
-    bootstrap API. No projects or secrets are seeded. Sign in at /login; after sign-in you land
-    on the organization overview, which has no projects yet.
-notes: |
-  The app runs database migrations itself on boot, so there is no separate migrate step.
-  .opslane/seed.sh starts the server inside the seed container (which also migrates the empty
-  database), waits for /api/status, calls POST /api/v1/admin/bootstrap to create the admin user
-  and organization, then stops the server. Dockerfile.standalone-infisical is unchanged.
-  The keys in env are throwaway values for the ephemeral check environment.
+    Seeded login: admin@verify.opslane.com / OpslaneVerify123! (email verified). Admin of the
+    organization "Opslane Org"; not a server (instance) admin. Sign in at /login.
+    Seeded data: project "Opslane Project" (Secrets Management, environments dev / staging / prod)
+    with secrets DATABASE_URL, API_KEY and FEATURE_FLAG_NEW_UI in dev at path /.
+    After sign-in you land on /organizations/<orgId>/projects, the org overview with one card per
+    product (Secrets Management shows 1 project, 3 secrets). An "SMTP has not been configured" banner
+    is expected; email invites and verification don't send.
+    Main pages (ids are generated per run; read them from the URL after sign-in):
+      /organizations/<orgId>/projects/secret-management                      Secrets Management project list
+      /organizations/<orgId>/projects/secret-management/<projectId>/overview  project secrets (values masked; Reveal All)
+      .../<projectId>/approval, /integrations, /insights, /access-management, /audit-logs   project tabs
+      /organizations/<orgId>/access-management                                org users, identities, groups, roles
+      /organizations/<orgId>/integrations, /billing, /audit-logs, /settings   org pages
+      /organizations/<orgId>/projects/kms, /projects/secret-scanning           other products (empty)
+    The instance admin is a separate account, instance-admin@verify.opslane.com / OpslaneVerify123!,
+    for the server admin console (/admin); don't use it unless a change is about server administration.
+  landing:
+    path: /
+    expect: /organizations/*/projects
+    text: Opslane Org
+auth:
+  session_command: node /opslane/session.cjs
