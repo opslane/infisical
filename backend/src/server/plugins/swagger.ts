@@ -6,15 +6,11 @@ import swagger from "@fastify/swagger";
 import swaggerUI from "@fastify/swagger-ui";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { z } from "zod";
-
-import { ApiDocsTags } from "@app/lib/api-docs";
 
 import { jsonSchemaTransform } from "./fastify-zod";
 
 const DOCS_ROUTE_PREFIX = "/api/docs";
 const SPEC_CACHE_MAX_AGE_SECONDS = 600;
-const MAX_TAGGED_SPEC_PAYLOADS = 20;
 
 const gzipAsync = promisify(gzip);
 const brotliCompressAsync = promisify(brotliCompress);
@@ -35,44 +31,9 @@ const SPEC_FORMAT_BY_ROUTE: Record<string, SpecFormat> = {
   [`${DOCS_ROUTE_PREFIX}/yaml`]: "yaml"
 };
 
-// the tags are matched by slug ("secret-tags" for "Secret Tags") so agents can pass them without encoding
-const TAG_BY_SLUG: Record<string, ApiDocsTags> = Object.fromEntries(
-  Object.values(ApiDocsTags).map((tag) => [tag.toLowerCase().replace(/[^a-z0-9]+/g, "-"), tag])
-);
-
-const SpecQuerySchema = z.object({
-  tag: z
-    .enum(Object.keys(TAG_BY_SLUG) as [string, ...string[]])
-    .transform((slug) => TAG_BY_SLUG[slug])
-    .optional()
-});
-
-type OpenApiDocument = {
-  paths?: Record<string, Record<string, { tags?: string[] }>>;
-};
-
-const filterSpecByTag = (spec: OpenApiDocument, tag: ApiDocsTags): OpenApiDocument => {
-  const paths: NonNullable<OpenApiDocument["paths"]> = {};
-  for (const [url, operations] of Object.entries(spec.paths ?? {})) {
-    const kept = Object.entries(operations).filter(([, operation]) => operation.tags?.includes(tag));
-    if (kept.length) paths[url] = Object.fromEntries(kept);
-  }
-  return { ...spec, paths };
-};
-
-const buildSpecPayload = async (
-  fastify: FastifyInstance,
-  format: SpecFormat,
-  tag?: ApiDocsTags
-): Promise<SpecPayload> => {
+const buildSpecPayload = async (fastify: FastifyInstance, format: SpecFormat): Promise<SpecPayload> => {
   const isYaml = format === "yaml";
-  let body: string;
-  if (isYaml) {
-    body = fastify.swagger({ yaml: true });
-  } else {
-    const spec = fastify.swagger() as unknown as OpenApiDocument;
-    body = JSON.stringify(tag ? filterSpecByTag(spec, tag) : spec);
-  }
+  const body = isYaml ? fastify.swagger({ yaml: true }) : JSON.stringify(fastify.swagger());
   const contentType = isYaml ? "application/x-yaml" : "application/json; charset=utf-8";
 
   const identity = Buffer.from(body, "utf8");
@@ -90,7 +51,6 @@ const buildSpecPayload = async (
   fastify.log.info(
     {
       format,
-      tag,
       identityBytes: identity.byteLength,
       brotliBytes: brotlied.byteLength,
       gzipBytes: gzipped.byteLength
@@ -175,30 +135,23 @@ export const fastifySwagger = fp(async (fastify) => {
     }
   });
 
-  const specPayloads = new Map<string, Promise<SpecPayload>>();
-  const taggedSpecPayloads = new Map<string, Promise<SpecPayload>>();
+  const specPayloads = new Map<SpecFormat, Promise<SpecPayload>>();
 
-  const getSpecPayload = (format: SpecFormat, tag?: ApiDocsTags) => {
-    const cache = tag ? taggedSpecPayloads : specPayloads;
-    const key = tag ?? format;
-
-    const cached = cache.get(key);
+  const getSpecPayload = (format: SpecFormat) => {
+    const cached = specPayloads.get(format);
     if (cached) return cached;
 
-    const pending = buildSpecPayload(fastify, format, tag).catch((err) => {
-      cache.delete(key);
+    const pending = buildSpecPayload(fastify, format).catch((err) => {
+      specPayloads.delete(format);
       throw err;
     });
 
-    if (tag && cache.size >= MAX_TAGGED_SPEC_PAYLOADS) cache.delete(cache.keys().next().value as string);
-    cache.set(key, pending);
+    specPayloads.set(format, pending);
     return pending;
   };
 
   const serveSpec = async (req: FastifyRequest, reply: FastifyReply, format: SpecFormat) => {
-    const { tag } = SpecQuerySchema.parse(req.query);
-    // Only the JSON spec is filtered by tag.
-    const payload = await getSpecPayload(format, format === "json" ? tag : undefined);
+    const payload = await getSpecPayload(format);
     const encoding = pickSpecEncoding(req.headers["accept-encoding"]);
 
     void reply
