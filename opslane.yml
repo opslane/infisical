@@ -32,6 +32,10 @@ verify_setup:
       /organizations/<orgId>/projects/kms, /projects/secret-scanning           other products (empty)
     The instance admin is a separate account, instance-admin@verify.opslane.com / OpslaneVerify123!,
     for the server admin console (/admin); don't use it unless a change is about server administration.
+    Create test data through the app: its API (e.g. POST /api/v2/folders, POST /api/v3/secrets/raw/<KEY>)
+    or the UI. Never insert folders, secrets or roles with SQL: rows written that way lack the records the
+    app writes alongside them (folder commits, versions), and later actions on them fail with a 500 that
+    isn't a real bug (a SQL-inserted folder's move fails in secret-folder-service.ts).
   landing:
     path: /
     expect: /organizations/*/projects
